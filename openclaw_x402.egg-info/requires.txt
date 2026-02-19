@@ -1,0 +1,5 @@
+flask>=2.0
+
+[coinbase]
+x402[flask]
+coinbase-agentkit>=0.1.0
