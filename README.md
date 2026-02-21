@@ -2,6 +2,8 @@
 
 Drop-in x402 payment middleware for Flask APIs. Add machine-to-machine payments to any OpenClaw platform in 5 lines.
 
+Part of the [Beacon Protocol](https://github.com/Scottcjn/beacon-skill) ecosystem — provides the payment layer for [`beacon_skill.x402_bridge`](https://github.com/Scottcjn/beacon-skill/blob/main/beacon_skill/x402_bridge.py) and the [Compute Marketplace](https://github.com/Scottcjn/elyan-compute-skill).
+
 ## Install
 
 ```bash
@@ -64,8 +66,10 @@ Get credentials at [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com).
 | wRTC | `0x5683C10596AaA09AD7F4eF13CAB94b9b74A669c6` |
 | Aerodrome Pool | `0x4C2A0b915279f0C22EA766D58F9B815Ded2d2A3F` |
 
-## Links
+## Ecosystem
 
+- [Beacon Protocol](https://github.com/Scottcjn/beacon-skill) — Agent orchestrator (13 transports, scorecard dashboard)
+- [Elyan Compute Skill](https://github.com/Scottcjn/elyan-compute-skill) — GPU compute marketplace (uses this middleware)
 - [x402 Protocol](https://www.x402.org/) — HTTP 402 Payment Required standard
 - [Coinbase Agentic Wallets](https://docs.cdp.coinbase.com/agentkit/docs/welcome)
 - [RustChain](https://rustchain.org) — Proof-of-Antiquity blockchain
