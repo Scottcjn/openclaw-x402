@@ -125,7 +125,7 @@ class X402Middleware:
                     return f(*args, **kwargs)
 
                 # Check for x402 payment header
-                payment_header = request.headers.get("X-PAYMENT", "")
+                payment_header = request.headers.get("X-PAYMENT", "").strip()
 
                 if payment_header and X402_LIB_AVAILABLE:
                     # Verify via facilitator (real x402 flow)
@@ -143,16 +143,13 @@ class X402Middleware:
                         log.error("x402 verification failed: %s", e)
                         return self._payment_required(price, description)
 
-                if payment_header and not X402_LIB_AVAILABLE:
-                    # Accept payment header on trust (manual mode)
-                    self._log_payment(
-                        payer="manual-trust",
-                        endpoint=request.path,
-                        amount=price,
-                        tx_hash=payment_header[:66],
-                        description=description,
-                    )
-                    return f(*args, **kwargs)
+                if not X402_LIB_AVAILABLE:
+                    if payment_header:
+                        log.warning(
+                            "Rejected unverified X-PAYMENT header in manual mode for %s",
+                            request.path,
+                        )
+                    return self._payment_required(price, description)
 
                 # No payment — return 402
                 return self._payment_required(price, description)
