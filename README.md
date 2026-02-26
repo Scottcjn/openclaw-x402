@@ -1,5 +1,6 @@
 # openclaw-x402
 
+[![BCOS Certified](https://img.shields.io/badge/BCOS-Certified-brightgreen?style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHptLTIgMTZsLTQtNCA1LjQxLTUuNDEgMS40MSAxLjQxTDEwIDE0bDYtNiAxLjQxIDEuNDFMMTAgMTd6Ii8+PC9zdmc+)](BCOS.md)
 Drop-in x402 payment middleware for Flask APIs. Add machine-to-machine payments to any OpenClaw platform in 5 lines.
 
 Part of the [Beacon Protocol](https://github.com/Scottcjn/beacon-skill) ecosystem — provides the payment layer for [`beacon_skill.x402_bridge`](https://github.com/Scottcjn/beacon-skill/blob/main/beacon_skill/x402_bridge.py) and the [Compute Marketplace](https://github.com/Scottcjn/elyan-compute-skill).
