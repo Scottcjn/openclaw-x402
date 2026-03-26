@@ -1,9 +1,26 @@
 # openclaw-x402
 
-[![BCOS Certified](https://img.shields.io/badge/BCOS-Certified-brightgreen?style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHptLTIgMTZsLTQtNCA1LjQxLTUuNDEgMS40MSAxLjQxTDEwIDE0bDYtNiAxLjQxIDEuNDFMMTAgMTd6Ii8+PC9zdmc+)](BCOS.md)
-Drop-in x402 payment middleware for Flask APIs. Add machine-to-machine payments to any OpenClaw platform in 5 lines.
+**The shortest path from agent demo to agent commerce.**
 
-Part of the [Beacon Protocol](https://github.com/Scottcjn/beacon-skill) ecosystem — provides the payment layer for [`beacon_skill.x402_bridge`](https://github.com/Scottcjn/beacon-skill/blob/main/beacon_skill/x402_bridge.py) and the [Compute Marketplace](https://github.com/Scottcjn/elyan-compute-skill).
+An MCP server where tools cost RTC to use. Claude calls a paid tool and it just works -- payment happens automatically via the [x402 protocol](https://www.x402.org/) (HTTP 402 Payment Required).
+
+Also includes drop-in Flask middleware for adding x402 payments to any REST API.
+
+## 5-Second Demo
+
+```python
+from openclaw_x402.mcp_server import mcp, _gate, _paid_result
+
+@mcp.tool
+def premium_export(format: str = "json", payment_token: str = "") -> str:
+    """[0.1 RTC] Premium data export."""
+    err = _gate(payment_token, 0.1, "premium_export", "Premium data export")
+    if err:
+        return err
+    return _paid_result({"data": "your premium content", "format": format}, 0.1, payment_token)
+```
+
+That is a paid MCP tool. Agents that call it without paying get a 402 response with payment instructions. Agents that pay 0.1 RTC get the data.
 
 ## Install
 
@@ -11,7 +28,103 @@ Part of the [Beacon Protocol](https://github.com/Scottcjn/beacon-skill) ecosyste
 pip install openclaw-x402
 ```
 
-## Quick Start
+## How It Works
+
+```
+Agent calls tool
+    |
+    v
+No payment token? -----> Return 402 + price + payment instructions
+    |                          |
+    |                     Agent signs RTC transfer to treasury
+    |                          |
+    |                     Agent retries with payment_token
+    |
+Has payment token
+    |
+    v
+Verify on RustChain -----> Invalid? Return error + retry instructions
+    |
+    v
+Execute tool, return result
+```
+
+## Claude Desktop / Claude Code Setup
+
+Add to your MCP config (`~/.claude/claude_desktop_config.json` or project `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "openclaw-x402": {
+      "command": "python",
+      "args": ["-m", "openclaw_x402"],
+      "env": {
+        "RUSTCHAIN_NODE": "https://50.28.86.131",
+        "TREASURY_WALLET": "your-wallet-id",
+        "X402_TESTNET": "1"
+      }
+    }
+  }
+}
+```
+
+Claude now has access to paid tools. It can call `list_prices` (free) to see what is available, then pay for `premium_search`, `miner_profile`, or `bcos_report`.
+
+## Built-in Tools
+
+| Tool | Price | Description |
+|------|-------|-------------|
+| `list_prices` | FREE | List all tools and prices |
+| `network_status` | FREE | RustChain node health |
+| `premium_search` | 0.1 RTC | Search the RustChain ledger |
+| `miner_profile` | 0.05 RTC | Miner hardware fingerprint profile |
+| `bcos_report` | 0.25 RTC | BCOS trust report for a GitHub repo |
+
+## Add Your Own Paid Tools
+
+```python
+from openclaw_x402.mcp_server import mcp, _gate, _paid_result
+
+@mcp.tool
+def gpu_inference(prompt: str = "", model: str = "llama-7b", payment_token: str = "") -> str:
+    """[0.5 RTC] Run GPU inference job.
+
+    Args:
+        prompt: The input prompt.
+        model: Model name to use.
+        payment_token: RTC payment JSON. Omit to get payment instructions.
+    """
+    err = _gate(payment_token, 0.5, "gpu_inference", "Run GPU inference job")
+    if err:
+        return err
+    result = run_model(prompt, model)
+    return _paid_result({"output": result}, 0.5, payment_token)
+
+# Free tools use the normal FastMCP decorator
+@mcp.tool
+def check_queue() -> str:
+    """[FREE] Check GPU job queue length."""
+    return '{"queue_length": 3}'
+```
+
+## Payment Token Format
+
+When an agent pays for a tool, it includes a `payment_token` argument:
+
+```json
+{
+  "tx_id": "abc123...",
+  "from": "agent-wallet-id",
+  "amount": 0.1
+}
+```
+
+The server verifies this transaction exists on RustChain before executing the tool. In testnet mode (`X402_TESTNET=1`), verification is relaxed for development.
+
+## Flask Middleware (REST APIs)
+
+For traditional HTTP APIs (not MCP), use the Flask middleware:
 
 ```python
 from flask import Flask, jsonify
@@ -24,58 +137,32 @@ x402 = X402Middleware(app, treasury="0xYourBaseAddress")
 @x402.premium(price="10000", description="Premium data export")  # $0.01 USDC
 def premium_data():
     return jsonify({"data": "your premium content"})
-
-# Free endpoints work normally — no decorator needed
-@app.route("/api/public/data")
-def public_data():
-    return jsonify({"data": "free content"})
 ```
 
-## How It Works
+The Flask middleware uses USDC on Base chain via Coinbase facilitator. The MCP server uses RTC on RustChain. Same pattern, two payment rails.
 
-1. Agent hits your premium endpoint
-2. Gets back HTTP 402 with payment instructions (USDC amount, treasury address, facilitator URL)
-3. Agent pays via Coinbase wallet on Base chain
-4. Agent retries with `X-PAYMENT` header containing tx hash
-5. Middleware verifies payment via Coinbase facilitator
-6. Access granted
+## Environment Variables
 
-## Free Mode
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RUSTCHAIN_NODE` | `https://50.28.86.131` | RustChain node URL |
+| `TREASURY_WALLET` | `openclaw-x402-treasury` | Wallet receiving payments |
+| `X402_TESTNET` | `1` | Accept payments on trust (dev mode) |
+| `RC_ADMIN_KEY` | | Admin key for verified transfers |
 
-Set `price="0"` to pass all requests through without payment — useful for testing the flow before charging.
+## Why x402 + MCP
 
-```python
-@x402.premium(price="0", description="Free for now")
-def free_premium():
-    return jsonify({"data": "free during testing"})
-```
+HTTP 402 has been a reserved status code since 1999. x402 gives it a real protocol. MCP gives AI agents a tool interface. Together: agents discover tools, see prices, pay, and use them -- no human in the loop.
 
-## Configuration
+This is the infrastructure layer for agent commerce. Every GPU cluster, every API, every dataset can become a paid tool that any agent can use.
 
-| Env Var | Purpose |
-|---------|---------|
-| `CDP_API_KEY_NAME` | Coinbase Developer Platform API key name |
-| `CDP_API_KEY_PRIVATE_KEY` | CDP API private key |
+## Links
 
-Get credentials at [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com).
-
-## Contract Addresses (Base Mainnet)
-
-| Token | Address |
-|-------|---------|
-| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
-| wRTC | `0x5683C10596AaA09AD7F4eF13CAB94b9b74A669c6` |
-| Aerodrome Pool | `0x4C2A0b915279f0C22EA766D58F9B815Ded2d2A3F` |
-
-## Ecosystem
-
-- [Beacon Protocol](https://github.com/Scottcjn/beacon-skill) — Agent orchestrator (13 transports, scorecard dashboard)
-- [Elyan Compute Skill](https://github.com/Scottcjn/elyan-compute-skill) — GPU compute marketplace (uses this middleware)
-- [x402 Protocol](https://www.x402.org/) — HTTP 402 Payment Required standard
-- [Coinbase Agentic Wallets](https://docs.cdp.coinbase.com/agentkit/docs/welcome)
-- [RustChain](https://rustchain.org) — Proof-of-Antiquity blockchain
-- [BoTTube](https://bottube.ai) — AI video platform using openclaw-x402
-- [Aerodrome DEX](https://aerodrome.finance) — Swap USDC to wRTC
+- [x402 Protocol](https://www.x402.org/) -- HTTP 402 Payment Required standard
+- [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) -- Agent tool interface
+- [RustChain](https://rustchain.org) -- Proof-of-Antiquity blockchain
+- [FastMCP](https://gofastmcp.com) -- Python MCP framework
+- [Coinbase x402](https://docs.cdp.coinbase.com/x402/docs/welcome) -- x402 on Base chain
 
 ## License
 

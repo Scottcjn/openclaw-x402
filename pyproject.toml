@@ -4,29 +4,39 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openclaw-x402"
-version = "0.1.0"
-description = "Drop-in x402 payment middleware for Flask APIs. Machine-to-machine payments on Base chain."
+version = "0.2.0"
+description = "Paid MCP tools + Flask middleware via HTTP 402. The shortest path from agent demo to agent commerce."
 readme = "README.md"
 license = "MIT"
 authors = [{name = "Elyan Labs", email = "scott@elyanlabs.ai"}]
-requires-python = ">=3.8"
-dependencies = ["flask>=2.0"]
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.0",
+    "httpx>=0.24",
+]
 
-keywords = ["x402", "openclaw", "payments", "flask", "coinbase", "base-chain", "usdc", "wrtc", "ai-agent", "machine-to-machine"]
+keywords = [
+    "x402", "mcp", "openclaw", "payments", "ai-agent",
+    "machine-to-machine", "rustchain", "rtc", "claude",
+    "tool-use", "agent-commerce",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
-    "Framework :: Flask",
 ]
 
 [project.optional-dependencies]
+flask = ["flask>=2.0"]
 coinbase = ["x402[flask]", "coinbase-agentkit>=0.1.0"]
 
+[project.scripts]
+openclaw-x402 = "openclaw_x402.mcp_server:main"
+
 [project.urls]
-Homepage = "https://rustchain.org/wallets.html"
-Repository = "https://github.com/Scottcjn/Rustchain"
+Homepage = "https://rustchain.org"
+Repository = "https://github.com/Scottcjn/openclaw-x402"
 
 [tool.setuptools.packages.find]
 include = ["openclaw_x402*"]
