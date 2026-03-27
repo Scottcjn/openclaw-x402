@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+      - "dependabot"
+    ignore:
+      # Ignore patch updates to avoid breaking changes from Flask bugfix releases
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch"]
+    # Groups pip updates for cleaner PRs
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      development-dependencies:
+        dependency-type: "development"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
