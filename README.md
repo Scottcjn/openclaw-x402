@@ -1,5 +1,7 @@
 # openclaw-x402
 
+[![RustChain Contributor](https://img.shields.io/badge/RustChain-Contributor-blue)](https://github.com/Scottcjn/Rustchain)
+
 **The shortest path from agent demo to agent commerce.**
 
 An MCP server where tools cost RTC to use. Claude calls a paid tool and it just works -- payment happens automatically via the [x402 protocol](https://www.x402.org/) (HTTP 402 Payment Required).
