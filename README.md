@@ -62,7 +62,7 @@ Add to your MCP config (`~/.claude/claude_desktop_config.json` or project `.mcp.
       "env": {
         "RUSTCHAIN_NODE": "https://50.28.86.131",
         "TREASURY_WALLET": "your-wallet-id",
-        "X402_TESTNET": "1"
+        "X402_TESTNET": "0"
       }
     }
   }
@@ -120,7 +120,7 @@ When an agent pays for a tool, it includes a `payment_token` argument:
 }
 ```
 
-The server verifies this transaction exists on RustChain before executing the tool. In testnet mode (`X402_TESTNET=1`), verification is relaxed for development.
+The server verifies this transaction exists on RustChain (a successful on-chain lookup with matching treasury destination, sufficient amount, and a confirmed sender) before executing the tool. Verification is **always required** — `X402_TESTNET` only hints which node to use and never bypasses verification or accepts a payment on trust.
 
 ## Flask Middleware (REST APIs)
 
@@ -147,7 +147,7 @@ The Flask middleware uses USDC on Base chain via Coinbase facilitator. The MCP s
 |----------|---------|---------|
 | `RUSTCHAIN_NODE` | `https://50.28.86.131` | RustChain node URL |
 | `TREASURY_WALLET` | `openclaw-x402-treasury` | Wallet receiving payments |
-| `X402_TESTNET` | `1` | Accept payments on trust (dev mode) |
+| `X402_TESTNET` | `0` | Node hint only — does **not** bypass payment verification |
 | `RC_ADMIN_KEY` | | Admin key for verified transfers |
 
 ## Why x402 + MCP

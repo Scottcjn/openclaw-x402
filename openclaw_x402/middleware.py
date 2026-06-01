@@ -127,31 +127,19 @@ class X402Middleware:
                 # Check for x402 payment header
                 payment_header = request.headers.get("X-PAYMENT", "").strip()
 
-                if payment_header and X402_LIB_AVAILABLE:
-                    # Verify via facilitator (real x402 flow)
-                    try:
-                        # The x402 Flask middleware handles verification
-                        self._log_payment(
-                            payer="x402-verified",
-                            endpoint=request.path,
-                            amount=price,
-                            tx_hash=payment_header[:66],
-                            description=description,
-                        )
-                        return f(*args, **kwargs)
-                    except Exception as e:
-                        log.error("x402 verification failed: %s", e)
-                        return self._payment_required(price, description)
-
-                if not X402_LIB_AVAILABLE:
-                    if payment_header:
-                        log.warning(
-                            "Rejected unverified X-PAYMENT header in manual mode for %s",
-                            request.path,
-                        )
-                    return self._payment_required(price, description)
-
-                # No payment — return 402
+                # SECURITY (fail closed): the facilitator verification path is
+                # not actually wired here — the imported x402 middleware is never
+                # invoked — so an X-PAYMENT header must NEVER be trusted on its
+                # own. Previously, with the x402 lib installed, ANY non-empty
+                # X-PAYMENT header was logged as "x402-verified" and granted free
+                # access. Until real on-chain/facilitator settlement verification
+                # is implemented, every unverified request gets a 402.
+                if payment_header:
+                    log.warning(
+                        "Rejected unverified X-PAYMENT header for %s "
+                        "(facilitator verification not implemented; failing closed)",
+                        request.path,
+                    )
                 return self._payment_required(price, description)
 
             return wrapper

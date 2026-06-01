@@ -44,20 +44,24 @@ def test_verify_payment_accepts_matching_confirmed_ledger_transaction(monkeypatc
         assert url.endswith("/api/tx/tx-ok")
         assert verify is False
         assert timeout == 10
-        return DummyResponse(200, {"to": "openclaw-treasury", "amount": "0.25"})
+        # Ledger reports the real sender + amount; client claims differ below.
+        return DummyResponse(
+            200, {"to": "openclaw-treasury", "amount": "0.25", "from": "chain-sender"}
+        )
 
     monkeypatch.setattr(mcp_server.httpx, "get", fake_get)
 
     result = mcp_server._verify_payment(
-        json.dumps({"tx_id": "tx-ok", "from": "payer-wallet", "amount": 0.25}),
+        json.dumps({"tx_id": "tx-ok", "from": "client-claimed-wallet", "amount": 99.0}),
         0.25,
         "bcos_report",
     )
 
+    # Result must bind to the ON-CHAIN sender + amount, never the client's claims.
     assert result == {
         "valid": True,
         "tx_id": "tx-ok",
-        "from": "payer-wallet",
+        "from": "chain-sender",
         "amount": 0.25,
     }
 
@@ -78,8 +82,38 @@ def test_verify_payment_rejects_confirmed_transaction_to_wrong_treasury(monkeypa
 
     assert result == {
         "valid": False,
-        "error": "Transaction destination or amount mismatch.",
+        "error": "Transaction destination, amount, or sender could not be verified.",
     }
+
+
+def test_verify_payment_rejects_when_chain_sender_missing(monkeypatch):
+    # A confirmed tx to the right treasury but with no on-chain sender must NOT
+    # be trusted (prevents binding to a client-supplied 'from').
+    monkeypatch.setattr(mcp_server, "TREASURY_WALLET", "openclaw-treasury")
+    monkeypatch.setattr(
+        mcp_server.httpx,
+        "get",
+        lambda *a, **k: DummyResponse(200, {"to": "openclaw-treasury", "amount": "1.0"}),
+    )
+    result = mcp_server._verify_payment(
+        json.dumps({"tx_id": "tx-nofrom", "from": "client", "amount": 1.0}), 0.25, "bcos_report"
+    )
+    assert result["valid"] is False
+
+
+def test_verify_payment_fails_closed_on_network_exception(monkeypatch):
+    # Even with the legacy X402_TESTNET=1 set, a lookup error must NOT fail open.
+    monkeypatch.setenv("X402_TESTNET", "1")
+
+    def boom(*a, **k):
+        raise RuntimeError("node down")
+
+    monkeypatch.setattr(mcp_server.httpx, "get", boom)
+    result = mcp_server._verify_payment(
+        json.dumps({"tx_id": "any", "from": "client", "amount": 1.0}), 0.25, "bcos_report"
+    )
+    assert result["valid"] is False
+    assert "Verification failed" in result["error"]
 
 
 def test_verify_payment_reports_unverified_tx_when_testnet_fallback_disabled(monkeypatch):
