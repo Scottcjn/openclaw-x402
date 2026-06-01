@@ -70,7 +70,8 @@ def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -
 
     tx_id = token.get("tx_id", "")
     amount = float(token.get("amount", 0))
-    sender = token.get("from", "")
+    # NOTE: the client-supplied "from" is intentionally ignored; the verified
+    # sender is read from the on-chain tx below.
 
     if amount < expected_price:
         return {
@@ -87,21 +88,29 @@ def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -
         )
         if resp.status_code == 200:
             tx_data = resp.json()
-            if (
-                tx_data.get("to") == TREASURY_WALLET
-                and float(tx_data.get("amount", 0)) >= expected_price
-            ):
-                return {"valid": True, "tx_id": tx_id, "from": sender, "amount": amount}
-            return {"valid": False, "error": "Transaction destination or amount mismatch."}
-        # Testnet fallback
-        if os.environ.get("X402_TESTNET", "1") == "1":
-            log.warning("Testnet mode: accepting payment on trust (tx_id=%s)", tx_id)
-            return {"valid": True, "tx_id": tx_id, "from": sender, "amount": amount, "mode": "testnet"}
+            chain_to = tx_data.get("to")
+            chain_from = tx_data.get("from")
+            chain_amount = float(tx_data.get("amount", 0))
+            if chain_to == TREASURY_WALLET and chain_amount >= expected_price and chain_from:
+                # Bind the result to the verified on-chain sender AND amount.
+                # Never echo the client-supplied `from`/`amount` (those are
+                # attacker-controlled and would corrupt downstream accounting).
+                return {
+                    "valid": True,
+                    "tx_id": tx_id,
+                    "from": chain_from,
+                    "amount": chain_amount,
+                }
+            return {
+                "valid": False,
+                "error": "Transaction destination, amount, or sender could not be verified.",
+            }
+        # SECURITY (fail closed): never accept a payment "on trust" when the
+        # ledger lookup does not return a verified 200. The previous testnet
+        # fallback (default ON) accepted any self-asserted token whenever the
+        # tx lookup 404'd/errored — i.e. for every fabricated tx_id.
         return {"valid": False, "error": f"Cannot verify tx: HTTP {resp.status_code}"}
     except Exception as e:
-        if os.environ.get("X402_TESTNET", "1") == "1":
-            log.warning("Testnet mode: accepting payment on trust (%s)", e)
-            return {"valid": True, "tx_id": tx_id, "from": sender, "amount": amount, "mode": "testnet"}
         return {"valid": False, "error": f"Verification failed: {e}"}
 
 
@@ -317,7 +326,9 @@ def main():
     log.info("Starting OpenClaw x402 MCP Server")
     log.info("  Node: %s", RUSTCHAIN_NODE)
     log.info("  Treasury: %s", TREASURY_WALLET)
-    log.info("  Testnet: %s", "ON" if os.environ.get("X402_TESTNET", "1") == "1" else "OFF")
+    # Payment verification always requires a real on-chain 200 lookup now;
+    # X402_TESTNET no longer bypasses verification. Default OFF.
+    log.info("  Testnet node hint: %s", "ON" if os.environ.get("X402_TESTNET", "0") == "1" else "OFF")
     mcp.run()
 
 
