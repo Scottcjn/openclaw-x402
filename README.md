@@ -108,6 +108,18 @@ def check_queue() -> str:
     return '{"queue_length": 3}'
 ```
 
+## Get Discovered + Trusted
+
+After your paid MCP tool or Flask route exposes a reachable `/.well-known/x402.json` manifest, add it to [agentic.market](https://agentic.market) so buyer agents can discover the service.
+
+To help buyers evaluate whether an endpoint is worth paying for, publish the public trust signals that apply to your service:
+
+- [MAKO Pulse](https://mako.pollinateresearch.com/pulse) tracks x402 service availability and schema/payment behavior across the public directory.
+- `GET /pulse.json` can expose a seller's current Pulse score for uptime and endpoint health.
+- `GET /api/reputation/wallet` can summarize a seller wallet's track record across endpoints as a 0-100 reputation score and tier.
+
+These discovery and reputation resources are external to openclaw-x402. Use them as public pointers for buyers, while openclaw-x402 continues to handle your local paid-tool and payment-verification flow.
+
 ## Payment Token Format
 
 When an agent pays for a tool, it includes a `payment_token` argument:
