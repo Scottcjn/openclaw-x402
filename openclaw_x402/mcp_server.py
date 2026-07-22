@@ -33,6 +33,7 @@ import hashlib
 import json
 import logging
 import os
+import sqlite3
 import time
 
 import httpx
@@ -55,6 +56,53 @@ mcp = FastMCP(
 )
 
 # --- Payment verification ---
+
+# Spent-transaction ledger. A payment_token is a bearer credential: anyone
+# holding the tx_id (including any third party reading it off the public
+# ledger) can present it. One transaction must therefore buy exactly one call.
+SPENT_TX_DB = os.environ.get(
+    "X402_SPENT_TX_DB",
+    os.path.join(os.path.expanduser("~"), ".openclaw-x402", "spent_tx.db"),
+)
+
+
+def _consume_tx(tx_id: str, tool_name: str) -> str:
+    """
+    Atomically mark a verified tx_id as spent.
+
+    Returns "claimed" the first time a tx_id is seen, "replay" if it was
+    already spent, and "unavailable" if the ledger cannot be written --
+    which is refused rather than accepted, in line with the rest of the
+    verification path failing closed.
+    """
+    if not tx_id:
+        return "replay"
+    try:
+        parent = os.path.dirname(SPENT_TX_DB)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        conn = sqlite3.connect(SPENT_TX_DB, timeout=10)
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS spent_tx ("
+                "  tx_id TEXT PRIMARY KEY,"
+                "  tool TEXT,"
+                "  spent_at REAL"
+                ")"
+            )
+            conn.execute(
+                "INSERT INTO spent_tx (tx_id, tool, spent_at) VALUES (?, ?, ?)",
+                (tx_id, tool_name, time.time()),
+            )
+            conn.commit()
+            return "claimed"
+        except sqlite3.IntegrityError:
+            return "replay"
+        finally:
+            conn.close()
+    except Exception as e:
+        log.error("Spent-tx ledger unavailable (%s): refusing payment %s", e, tx_id)
+        return "unavailable"
 
 
 def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -> dict:
@@ -92,6 +140,22 @@ def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -
             chain_from = tx_data.get("from")
             chain_amount = float(tx_data.get("amount", 0))
             if chain_to == TREASURY_WALLET and chain_amount >= expected_price and chain_from:
+                # A confirmed transaction stays confirmed forever, so it would
+                # otherwise pay for unlimited calls. Spend it exactly once.
+                claim = _consume_tx(tx_id, tool_name)
+                if claim == "replay":
+                    return {
+                        "valid": False,
+                        "error": (
+                            "Payment token already used. Each transaction pays "
+                            "for exactly one call -- send a new payment."
+                        ),
+                    }
+                if claim != "claimed":
+                    return {
+                        "valid": False,
+                        "error": "Cannot verify payment: spent-transaction ledger unavailable.",
+                    }
                 # Bind the result to the verified on-chain sender AND amount.
                 # Never echo the client-supplied `from`/`amount` (those are
                 # attacker-controlled and would corrupt downstream accounting).
