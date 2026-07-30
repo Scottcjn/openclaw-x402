@@ -77,4 +77,3 @@ def casper_chain_name(network):
     if not is_casper_network(network):
         raise ValueError(f"Unsupported Casper network: {network!r}")
     return network.split(":", 1)[1]
-
