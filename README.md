@@ -151,7 +151,99 @@ def premium_data():
     return jsonify({"data": "your premium content"})
 ```
 
-The Flask middleware uses USDC on Base chain via Coinbase facilitator. The MCP server uses RTC on RustChain. Same pattern, two payment rails.
+The Flask middleware uses USDC on Base chain via Coinbase facilitator. The MCP server uses RTC on RustChain. Same pattern, three payment rails (see Casper below).
+
+## x402 on Casper
+
+The Flask middleware also speaks x402 on [Casper](https://casper.network). Settlement happens in wCSPR
+exposed as a CEP-18 token, brokered by an x402 v2 facilitator that pays the gas for the on-chain
+`transfer_with_authorization` deploy. Same decorator, different rail:
+
+```python
+from flask import Flask, jsonify
+from openclaw_x402 import X402Middleware
+
+app = Flask(__name__)
+x402 = X402Middleware(
+    app,
+    rail="casper",
+    treasury="00" + "ab" * 32,  # your Casper account hash
+)
+
+@app.route("/api/premium/data")
+@x402.premium(price="7500000000", description="Premium data export")  # 7.5 CSPR
+def premium_data():
+    return jsonify({"data": "your premium content"})
+```
+
+**Prices are in motes**, the atomic unit of CSPR — 9 decimals, `1 CSPR = 1_000_000_000 motes`.
+Helpers are exported so you never have to count zeros:
+
+```python
+from openclaw_x402 import cspr_to_motes, motes_to_cspr
+
+cspr_to_motes("7.5")        # "7500000000"
+motes_to_cspr("7500000000") # "7.5"
+```
+
+### Payment flow
+
+```
+Agent GETs the route
+    |
+    v
+No X-PAYMENT header? ---> 402 + accepts[] (scheme "exact", network, payTo, amount, asset)
+    |                          |
+    |                     Agent signs a TransferWithAuthorization payload
+    |                          |
+    |                     Agent retries with X-PAYMENT: base64(json)
+    |
+Has X-PAYMENT header
+    |
+    v
+POST /verify to facilitator ---> not valid? 402 + reason
+    |
+    v
+POST /settle to facilitator ---> failed? 402 + reason
+    |
+    v
+Run the route, return 200 + X-PAYMENT-RESPONSE (base64 settlement receipt)
+```
+
+Verification **fails closed**, exactly like the other rails: a malformed header, a rejected payload,
+a failed settlement, or an unreachable facilitator all produce a fresh 402. Payload shape is
+pre-checked locally (`payTo`, amount, network, required authorization fields) before anything goes
+over the wire, so obviously bad requests never cost a facilitator round-trip.
+
+### Networks
+
+| CAIP-2 id | Chain |
+|-----------|-------|
+| `casper:casper` | Casper mainnet (default) |
+| `casper:casper-test` | Casper testnet |
+
+### Configuration
+
+Everything is configurable, with the public cspr.cloud facilitator as the default:
+
+```python
+from openclaw_x402 import CasperRailConfig, X402Middleware
+
+x402 = X402Middleware(
+    app,
+    rail="casper",
+    casper_config=CasperRailConfig(
+        treasury="00" + "ab" * 32,
+        network="casper:casper-test",
+        facilitator_url="https://x402-facilitator.cspr.cloud",
+        asset="<64-hex CEP-18 package hash>",   # wCSPR
+        token_name="wCSPR",
+        token_version="1",
+    ),
+)
+```
+
+`GET /api/x402/status` reports the active rail and its Casper settings.
 
 ## Environment Variables
 
@@ -161,6 +253,13 @@ The Flask middleware uses USDC on Base chain via Coinbase facilitator. The MCP s
 | `TREASURY_WALLET` | `openclaw-x402-treasury` | Wallet receiving payments |
 | `X402_TESTNET` | `0` | Node hint only — does **not** bypass payment verification |
 | `RC_ADMIN_KEY` | | Admin key for verified transfers |
+| `CASPER_NETWORK` | `casper:casper` | Casper CAIP-2 network (`casper:casper-test` for testnet) |
+| `CASPER_FACILITATOR_URL` | `https://x402-facilitator.cspr.cloud` | x402 v2 facilitator for Casper |
+| `CASPER_TREASURY` | | Casper account hash receiving payments |
+| `CASPER_WCSPR_PACKAGE_HASH` | | CEP-18 contract package hash of the wCSPR settlement token |
+| `CASPER_TOKEN_NAME` | `wCSPR` | CEP-18 token name (seeds the EIP-712 domain) |
+| `CASPER_TOKEN_VERSION` | `1` | CEP-18 token version (seeds the EIP-712 domain) |
+| `CASPER_MAX_TIMEOUT_SECONDS` | `900` | Validity window advertised in the 402 challenge |
 
 ## Why x402 + MCP
 
@@ -175,6 +274,7 @@ This is the infrastructure layer for agent commerce. Every GPU cluster, every AP
 - [RustChain](https://rustchain.org) -- Proof-of-Antiquity blockchain
 - [FastMCP](https://gofastmcp.com) -- Python MCP framework
 - [Coinbase x402](https://docs.cdp.coinbase.com/x402/docs/welcome) -- x402 on Base chain
+- [Casper](https://casper.network) -- x402 on Casper, wCSPR settlement ([cspr.cloud docs](https://docs.cspr.cloud))
 
 ## License
 
