@@ -21,6 +21,60 @@ def test_verify_payment_rejects_malformed_json_token():
     }
 
 
+def test_verify_payment_rejects_non_object_json_token_before_network_call(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("network verification should not run for malformed payment token")
+
+    monkeypatch.setattr(mcp_server.httpx, "get", fail_if_called)
+
+    result = mcp_server._verify_payment(
+        json.dumps(["tx-ok", "payer", 1.0]),
+        0.1,
+        "premium_search",
+    )
+
+    assert result == {
+        "valid": False,
+        "error": "Malformed payment token. Expected JSON object.",
+    }
+
+
+def test_verify_payment_rejects_invalid_client_amount_before_network_call(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("network verification should not run for malformed payment amount")
+
+    monkeypatch.setattr(mcp_server.httpx, "get", fail_if_called)
+
+    result = mcp_server._verify_payment(
+        json.dumps({"tx_id": "tx-bad-amount", "from": "payer", "amount": "many"}),
+        0.1,
+        "premium_search",
+    )
+
+    assert result == {
+        "valid": False,
+        "error": "Malformed payment token amount. Expected a finite number.",
+    }
+
+
+def test_verify_payment_rejects_missing_tx_id_before_network_call(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("network verification should not run without a tx_id")
+
+    monkeypatch.setattr(mcp_server.httpx, "get", fail_if_called)
+
+    result = mcp_server._verify_payment(
+        json.dumps({"from": "payer", "amount": 1.0}),
+        0.1,
+        "premium_search",
+    )
+
+    assert result == {
+        "valid": False,
+        "error": "Malformed payment token. Expected non-empty tx_id.",
+    }
+
+
 def test_verify_payment_rejects_insufficient_amount_before_network_call(monkeypatch):
     def fail_if_called(*args, **kwargs):
         raise AssertionError("network verification should not run for insufficient payment")
@@ -99,6 +153,28 @@ def test_verify_payment_rejects_when_chain_sender_missing(monkeypatch):
         json.dumps({"tx_id": "tx-nofrom", "from": "client", "amount": 1.0}), 0.25, "bcos_report"
     )
     assert result["valid"] is False
+
+
+def test_verify_payment_rejects_non_finite_chain_amount(monkeypatch):
+    monkeypatch.setattr(mcp_server, "TREASURY_WALLET", "openclaw-treasury")
+    monkeypatch.setattr(
+        mcp_server.httpx,
+        "get",
+        lambda *a, **k: DummyResponse(
+            200, {"to": "openclaw-treasury", "amount": "Infinity", "from": "chain-sender"}
+        ),
+    )
+
+    result = mcp_server._verify_payment(
+        json.dumps({"tx_id": "tx-infinite", "from": "payer", "amount": 1.0}),
+        0.25,
+        "bcos_report",
+    )
+
+    assert result == {
+        "valid": False,
+        "error": "Transaction destination, amount, or sender could not be verified.",
+    }
 
 
 def test_verify_payment_fails_closed_on_network_exception(monkeypatch):
