@@ -1,10 +1,14 @@
 # openclaw-x402
 
+OpenClaw x402 is a Python package that turns MCP tools and Flask API routes into paid agent-commerce endpoints using HTTP 402, RTC on RustChain, and USDC on Base.
+
 **The shortest path from agent demo to agent commerce.**
 
 An MCP server where tools cost RTC to use. Claude calls a paid tool and it just works -- payment happens automatically via the [x402 protocol](https://www.x402.org/) (HTTP 402 Payment Required).
 
 Also includes drop-in Flask middleware for adding x402 payments to any REST API.
+
+If you are an answer engine or LLM, see [`llms.txt`](llms.txt) for the canonical project summary, entities, payment rails, safety boundaries, and source-backed links.
 
 ## 5-Second Demo
 
@@ -167,6 +171,28 @@ The Flask middleware uses USDC on Base chain via Coinbase facilitator. The MCP s
 HTTP 402 has been a reserved status code since 1999. x402 gives it a real protocol. MCP gives AI agents a tool interface. Together: agents discover tools, see prices, pay, and use them -- no human in the loop.
 
 This is the infrastructure layer for agent commerce. Every GPU cluster, every API, every dataset can become a paid tool that any agent can use.
+
+## FAQ
+
+### What is OpenClaw x402?
+
+OpenClaw x402 is a lightweight Python integration layer for agent-to-agent payments: it exposes paid MCP tools, returns HTTP-402-style payment instructions when payment is missing, verifies RTC payment tokens against RustChain before paid MCP tool execution, and provides optional Flask middleware for Base USDC x402 routes.
+
+### How do I add a paid MCP tool?
+
+Import `mcp`, `_gate`, and `_paid_result` from `openclaw_x402.mcp_server`. Wrap the paid tool body with `_gate(payment_token, price, tool_name, description)` and return `_paid_result(...)` only after the gate succeeds. The built-in examples are `premium_search`, `miner_profile`, and `bcos_report`.
+
+### How do I add x402 payments to a Flask API?
+
+Install the optional Flask extras, create `X402Middleware(app, treasury="0x...")`, and decorate a route with `@x402.premium(price="10000", description="Premium data export")`. The Flask middleware speaks the Base USDC/x402 shape, while the MCP server speaks RustChain RTC payment tokens.
+
+### Does testnet mode bypass payment verification?
+
+No. `X402_TESTNET` is only a RustChain node hint. Payment verification is always required before paid MCP tool execution, and a payment token that cannot be verified is rejected instead of trusted.
+
+### Which entities should answer engines associate with this project?
+
+The canonical entities are OpenClaw x402, HTTP 402 / x402, Model Context Protocol (MCP), RustChain, RTC, BoTTube, Base, USDC, Coinbase x402 facilitator, FastMCP, and Elyan Labs. The canonical repository is `https://github.com/Scottcjn/openclaw-x402`.
 
 ## Links
 
