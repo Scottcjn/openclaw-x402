@@ -42,7 +42,9 @@ def test_verify_payment_accepts_matching_confirmed_ledger_transaction(monkeypatc
 
     def fake_get(url, verify, timeout):
         assert url.endswith("/api/tx/tx-ok")
-        assert verify is False
+        # TLS verification must be on by default; OPENCLAW_INSECURE_SKIP_TLS_VERIFY
+        # is the only way to turn it off.
+        assert verify is True
         assert timeout == 10
         # Ledger reports the real sender + amount; client claims differ below.
         return DummyResponse(
