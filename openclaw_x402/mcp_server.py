@@ -28,6 +28,16 @@ Or in Claude Desktop config:
       }
     }
 """
+# OPENCLAW_INSECURE_SKIP_TLS_VERIFY=1 re-enables the historical
+# verify=False behaviour for self-hosted nodes with private CA certs.
+import os as _os_tls
+
+_INSECURE_TLS = _os_tls.getenv("OPENCLAW_INSECURE_SKIP_TLS_VERIFY", "").lower() in (
+    "1", "true", "yes"
+)
+_VERIFY = not _INSECURE_TLS
+
+
 
 import hashlib
 import json
@@ -131,7 +141,7 @@ def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -
     try:
         resp = httpx.get(
             f"{RUSTCHAIN_NODE}/api/tx/{tx_id}",
-            verify=False,
+            verify=_VERIFY,
             timeout=10,
         )
         if resp.status_code == 200:
@@ -272,7 +282,7 @@ def premium_search(query: str = "", payment_token: str = "") -> str:
         resp = httpx.get(
             f"{RUSTCHAIN_NODE}/api/ledger",
             params={"q": query, "limit": 20},
-            verify=False,
+            verify=_VERIFY,
             timeout=10,
         )
         if resp.status_code == 200:
@@ -301,7 +311,7 @@ def miner_profile(miner_id: str = "", payment_token: str = "") -> str:
     try:
         resp = httpx.get(
             f"{RUSTCHAIN_NODE}/api/miner/{miner_id}",
-            verify=False,
+            verify=_VERIFY,
             timeout=10,
         )
         if resp.status_code == 200:
@@ -349,7 +359,7 @@ def bcos_report(repo: str = "", payment_token: str = "") -> str:
 def network_status() -> str:
     """[FREE] Check RustChain network health. No payment required."""
     try:
-        resp = httpx.get(f"{RUSTCHAIN_NODE}/health", verify=False, timeout=10)
+        resp = httpx.get(f"{RUSTCHAIN_NODE}/health", verify=_VERIFY, timeout=10)
         if resp.status_code == 200:
             return json.dumps(resp.json(), indent=2)
     except Exception as e:
