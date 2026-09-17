@@ -32,6 +32,7 @@ Or in Claude Desktop config:
 import hashlib
 import json
 import logging
+import math
 import os
 import sqlite3
 import time
@@ -105,6 +106,19 @@ def _consume_tx(tx_id: str, tool_name: str) -> str:
         return "unavailable"
 
 
+def _parse_payment_amount(value) -> float | None:
+    """Parse a JSON payment amount and reject values the ledger cannot represent."""
+    if isinstance(value, bool):
+        return None
+    try:
+        amount = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(amount):
+        return None
+    return amount
+
+
 def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -> dict:
     """
     Verify an RTC payment token against RustChain.
@@ -115,9 +129,20 @@ def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -
         token = json.loads(payment_token)
     except (json.JSONDecodeError, TypeError):
         return {"valid": False, "error": "Malformed payment token. Expected JSON."}
+    if not isinstance(token, dict):
+        return {"valid": False, "error": "Malformed payment token. Expected JSON object."}
 
     tx_id = token.get("tx_id", "")
-    amount = float(token.get("amount", 0))
+    if not isinstance(tx_id, str) or not tx_id.strip():
+        return {"valid": False, "error": "Malformed payment token. Expected non-empty tx_id."}
+    tx_id = tx_id.strip()
+
+    amount = _parse_payment_amount(token.get("amount", 0))
+    if amount is None:
+        return {
+            "valid": False,
+            "error": "Malformed payment token amount. Expected a finite number.",
+        }
     # NOTE: the client-supplied "from" is intentionally ignored; the verified
     # sender is read from the on-chain tx below.
 
@@ -138,8 +163,13 @@ def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -
             tx_data = resp.json()
             chain_to = tx_data.get("to")
             chain_from = tx_data.get("from")
-            chain_amount = float(tx_data.get("amount", 0))
-            if chain_to == TREASURY_WALLET and chain_amount >= expected_price and chain_from:
+            chain_amount = _parse_payment_amount(tx_data.get("amount", 0))
+            if (
+                chain_to == TREASURY_WALLET
+                and chain_amount is not None
+                and chain_amount >= expected_price
+                and chain_from
+            ):
                 # A confirmed transaction stays confirmed forever, so it would
                 # otherwise pay for unlimited calls. Spend it exactly once.
                 claim = _consume_tx(tx_id, tool_name)
@@ -236,6 +266,8 @@ def _paid_result(data: dict, price: float, tx_token: str) -> str:
     try:
         token = json.loads(tx_token)
     except Exception:
+        token = {}
+    if not isinstance(token, dict):
         token = {}
     return json.dumps(
         {
