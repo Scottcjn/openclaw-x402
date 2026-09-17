@@ -70,6 +70,7 @@ class X402Middleware:
         """Create x402_payments table if DB function is provided."""
         if not self.db_func or self._payment_table_created:
             return
+        db = None
         try:
             db = self.db_func()
             db.execute("""
@@ -88,6 +89,12 @@ class X402Middleware:
             self._payment_table_created = True
         except Exception as e:
             log.warning("Failed to create x402_payments table: %s", e)
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception as e:
+                    log.warning("Failed to close x402 payment database: %s", e)
 
     def _register_routes(self, app):
         """Register x402 status endpoint."""
@@ -165,6 +172,7 @@ class X402Middleware:
         """Log a payment to the database."""
         if not self.db_func:
             return
+        db = None
         try:
             db = self.db_func()
             db.execute(
@@ -175,3 +183,9 @@ class X402Middleware:
             db.commit()
         except Exception as e:
             log.warning("Failed to log x402 payment: %s", e)
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception as e:
+                    log.warning("Failed to close x402 payment database: %s", e)

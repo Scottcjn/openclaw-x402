@@ -1,3 +1,4 @@
+from contextlib import closing
 import sqlite3
 import tempfile
 import unittest
@@ -45,7 +46,7 @@ class MiddlewareHelperTests(unittest.TestCase):
         middleware = X402Middleware(app, treasury="0xabc", db_func=self.db_func)
 
         self.assertTrue(middleware._payment_table_created)
-        with sqlite3.connect(self.db_path) as db:
+        with closing(sqlite3.connect(self.db_path)) as db:
             row = db.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
                 ("x402_payments",),
@@ -65,7 +66,7 @@ class MiddlewareHelperTests(unittest.TestCase):
             description="Premium export",
         )
 
-        with sqlite3.connect(self.db_path) as db:
+        with closing(sqlite3.connect(self.db_path)) as db:
             row = db.execute(
                 """
                 SELECT payer_address, endpoint, amount_usdc, tx_hash, network, description

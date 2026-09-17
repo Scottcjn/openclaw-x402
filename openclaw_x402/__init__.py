@@ -13,13 +13,35 @@ Usage:
         return jsonify({"data": "..."})
 """
 
+from typing import TYPE_CHECKING
+
 __version__ = "0.2.0"
 
-from .middleware import X402Middleware
 from .config import (
     X402_NETWORK, USDC_BASE, WRTC_BASE, AERODROME_POOL,
     FACILITATOR_URL, SWAP_INFO, is_free, has_cdp_credentials,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - type-checker only
+    from .middleware import X402Middleware
+
+
+def __getattr__(name):
+    """Lazily expose Flask-only middleware without breaking MCP-only installs."""
+    if name != "X402Middleware":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    try:
+        from .middleware import X402Middleware
+    except ModuleNotFoundError as exc:
+        if exc.name == "flask":
+            raise ImportError(
+                "X402Middleware requires Flask. Install the optional extra with "
+                "`pip install openclaw-x402[flask]` or install Flask directly."
+            ) from exc
+        raise
+    return X402Middleware
+
 
 __all__ = [
     "X402Middleware",
