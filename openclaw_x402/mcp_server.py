@@ -32,6 +32,7 @@ Or in Claude Desktop config:
 import hashlib
 import json
 import logging
+import math
 import os
 import sqlite3
 import time
@@ -116,8 +117,31 @@ def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -
     except (json.JSONDecodeError, TypeError):
         return {"valid": False, "error": "Malformed payment token. Expected JSON."}
 
-    tx_id = token.get("tx_id", "")
-    amount = float(token.get("amount", 0))
+    if not isinstance(token, dict):
+        return {
+            "valid": False,
+            "error": "Malformed payment token. Expected a JSON object with tx_id and amount.",
+        }
+
+    raw_amount = token.get("amount")
+    if raw_amount is None:
+        return {"valid": False, "error": "Payment token is missing required amount."}
+    try:
+        amount = float(raw_amount)
+    except (TypeError, ValueError):
+        return {
+            "valid": False,
+            "error": f"Payment amount is not numeric: {raw_amount!r}",
+        }
+    if not math.isfinite(amount):
+        return {
+            "valid": False,
+            "error": f"Payment amount must be a finite number, got {raw_amount!r}.",
+        }
+
+    tx_id = token.get("tx_id")
+    if not isinstance(tx_id, str) or not tx_id.strip():
+        return {"valid": False, "error": "Payment token is missing a valid tx_id."}
     # NOTE: the client-supplied "from" is intentionally ignored; the verified
     # sender is read from the on-chain tx below.
 
@@ -138,8 +162,16 @@ def _verify_payment(payment_token: str, expected_price: float, tool_name: str) -
             tx_data = resp.json()
             chain_to = tx_data.get("to")
             chain_from = tx_data.get("from")
-            chain_amount = float(tx_data.get("amount", 0))
-            if chain_to == TREASURY_WALLET and chain_amount >= expected_price and chain_from:
+            try:
+                chain_amount = float(tx_data.get("amount", 0))
+            except (TypeError, ValueError):
+                chain_amount = float("nan")
+            if (
+                chain_to == TREASURY_WALLET
+                and math.isfinite(chain_amount)
+                and chain_amount >= expected_price
+                and chain_from
+            ):
                 # A confirmed transaction stays confirmed forever, so it would
                 # otherwise pay for unlimited calls. Spend it exactly once.
                 claim = _consume_tx(tx_id, tool_name)

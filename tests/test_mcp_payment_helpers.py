@@ -21,7 +21,101 @@ def test_verify_payment_rejects_malformed_json_token():
     }
 
 
-def test_verify_payment_rejects_insufficient_amount_before_network_call(monkeypatch):
+def test_verify_payment_rejects_json_array_token_without_network_call(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("network verification should not run for non-object token")
+
+    monkeypatch.setattr(mcp_server.httpx, "get", fail_if_called)
+
+    result = mcp_server._verify_payment("[1,2,3]", 0.1, "premium_search")
+
+    assert result["valid"] is False
+    assert "JSON object" in result["error"]
+
+
+def test_verify_payment_rejects_non_numeric_amount_without_network_call(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("network verification should not run for non-numeric amount")
+
+    monkeypatch.setattr(mcp_server.httpx, "get", fail_if_called)
+
+    result = mcp_server._verify_payment(
+        json.dumps({"tx_id": "tx-abc", "from": "payer", "amount": "many"}),
+        0.1,
+        "premium_search",
+    )
+
+    assert result["valid"] is False
+    assert "not numeric" in result["error"]
+
+
+def test_verify_payment_rejects_non_finite_amount_without_network_call(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("network verification should not run for non-finite amount")
+
+    monkeypatch.setattr(mcp_server.httpx, "get", fail_if_called)
+
+    for bad in ("Infinity", "-Infinity", "NaN"):
+        result = mcp_server._verify_payment(
+            json.dumps({"tx_id": "tx-abc", "from": "payer", "amount": bad}),
+            0.1,
+            "premium_search",
+        )
+        assert result["valid"] is False
+        assert "finite" in result["error"]
+
+
+def test_verify_payment_rejects_missing_tx_id_without_network_call(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("network verification should not run for missing tx id")
+
+    monkeypatch.setattr(mcp_server.httpx, "get", fail_if_called)
+
+    for token in (
+        json.dumps({"from": "payer", "amount": 1.0}),
+        json.dumps({"tx_id": "", "from": "payer", "amount": 1.0}),
+        json.dumps({"tx_id": None, "from": "payer", "amount": 1.0}),
+    ):
+        result = mcp_server._verify_payment(token, 0.1, "premium_search")
+        assert result["valid"] is False
+        assert "tx_id" in result["error"]
+
+
+def test_verify_payment_rejects_non_finite_ledger_amount(monkeypatch):
+    monkeypatch.setattr(mcp_server, "TREASURY_WALLET", "openclaw-treasury")
+    for bad in ("Infinity", "NaN"):
+        monkeypatch.setattr(
+            mcp_server.httpx,
+            "get",
+            lambda *a, **k: DummyResponse(
+                200,
+                {"to": "openclaw-treasury", "amount": bad, "from": "chain-sender"},
+            ),
+        )
+        result = mcp_server._verify_payment(
+            json.dumps({"tx_id": "tx-inf", "from": "payer", "amount": 1.0}),
+            0.1,
+            "premium_search",
+        )
+        assert result["valid"] is False
+
+
+def test_verify_payment_rejects_malformed_ledger_amount(monkeypatch):
+    monkeypatch.setattr(mcp_server, "TREASURY_WALLET", "openclaw-treasury")
+    monkeypatch.setattr(
+        mcp_server.httpx,
+        "get",
+        lambda *a, **k: DummyResponse(
+            200,
+            {"to": "openclaw-treasury", "amount": "many", "from": "chain-sender"},
+        ),
+    )
+    result = mcp_server._verify_payment(
+        json.dumps({"tx_id": "tx-bad", "from": "payer", "amount": 1.0}),
+        0.1,
+        "premium_search",
+    )
+    assert result["valid"] is False
     def fail_if_called(*args, **kwargs):
         raise AssertionError("network verification should not run for insufficient payment")
 
